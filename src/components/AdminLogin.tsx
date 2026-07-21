@@ -16,14 +16,6 @@ export default function AdminLogin({ onLoginSuccess }: AdminLoginProps) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // Secure password hashing function
-  const hashPassword = async (pwd: string): Promise<string> => {
-    const msgUint8 = new TextEncoder().encode(pwd);
-    const hashBuffer = await crypto.subtle.digest("SHA-256", msgUint8);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
-  };
-
   const handleGoogleSignIn = async () => {
     setLoading(true);
     setError(null);
@@ -73,33 +65,51 @@ export default function AdminLogin({ onLoginSuccess }: AdminLoginProps) {
 
     setLoading(true);
     try {
-      const enteredHash = await hashPassword(password.trim());
-      // Securely hashed passcode/password comparison (TplAdmin2026!)
-      const targetHash = "413b0c4eb8dcbf6ec58fe84f2b1d7d078c85fa65ec437e29cf9a3e1fc8d2495d";
       const targetEmail = "hfkxjbd@gmail.com";
+      const inputEmail = email.trim().toLowerCase();
 
-      if (email.trim().toLowerCase() === targetEmail && enteredHash === targetHash) {
-        // Authenticate the user with Firebase Auth so that Firebase Security Rules can verify identity
-        let fbUid = "secure-admin-uid";
-        try {
-          const userCred = await signInWithEmailAndPassword(auth, targetEmail, password.trim());
-          fbUid = userCred.user.uid;
-        } catch (authErr: any) {
-          // If the user doesn't exist yet, attempt auto-creation
-          if (authErr.code === "auth/user-not-found" || authErr.code === "auth/invalid-credential" || authErr.code === "auth/wrong-password") {
-            try {
-              const userCred = await createUserWithEmailAndPassword(auth, targetEmail, password.trim());
-              fbUid = userCred.user.uid;
-            } catch (createErr) {
-              console.warn("Could not auto-create Admin Auth user:", createErr);
-            }
-          } else {
-            console.warn("Firebase Auth sign-in failed:", authErr);
+      if (inputEmail !== targetEmail) {
+        setError("Invalid administrative email or password. Access Denied.");
+        setLoading(false);
+        return;
+      }
+
+      let userCred;
+      try {
+        // Authenticate directly with Firebase Authentication using the entered password
+        userCred = await signInWithEmailAndPassword(auth, targetEmail, password.trim());
+      } catch (authErr: any) {
+        // If the user doesn't exist yet in Firebase Authentication, attempt automatic creation (Requirement 6)
+        if (
+          authErr.code === "auth/user-not-found" ||
+          authErr.code === "auth/invalid-credential" ||
+          authErr.code === "auth/wrong-password"
+        ) {
+          try {
+            userCred = await createUserWithEmailAndPassword(auth, targetEmail, password.trim());
+          } catch (createErr) {
+            console.warn("Could not auto-create Admin Auth user:", createErr);
+            throw authErr; // Rethrow original error if creation fails
           }
+        } else {
+          throw authErr;
         }
+      }
+
+      if (userCred && userCred.user) {
+        const user = userCred.user;
+        const adminDocRef = doc(db, "admins", user.uid);
+        
+        // Ensure the administrator role is assigned in Firestore (Requirement 6)
+        await setDoc(adminDocRef, {
+          uid: user.uid,
+          email: targetEmail,
+          name: "System Administrator",
+          createdAt: new Date().toISOString(),
+        }, { merge: true });
 
         onLoginSuccess({
-          uid: fbUid,
+          uid: user.uid,
           email: targetEmail,
           name: "System Administrator",
           isAdmin: true,
@@ -107,9 +117,9 @@ export default function AdminLogin({ onLoginSuccess }: AdminLoginProps) {
       } else {
         setError("Invalid administrative email or password. Access Denied.");
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Secure login error:", err);
-      setError("An internal error occurred during secure credential verification.");
+      setError("Invalid administrative email or password. Access Denied.");
     } finally {
       setLoading(false);
     }
@@ -224,21 +234,6 @@ export default function AdminLogin({ onLoginSuccess }: AdminLoginProps) {
           </svg>
           <span>Sign in with Google Admin Domain</span>
         </button>
-
-        {/* Informative Security Box */}
-        <div className="bg-gold-50 border border-gold-200/50 rounded-xl p-4 space-y-1.5 text-xs text-gold-950">
-          <p className="font-bold flex items-center gap-1.5">
-            <ShieldAlert className="w-4.5 h-4.5 text-gold-700" />
-            Security Notice
-          </p>
-          <p className="leading-relaxed">
-            Authorized administrator credentials for evaluation:
-            <br />
-            Email: <code className="bg-white px-1 py-0.5 rounded border border-gold-300 font-mono font-bold">hfkxjbd@gmail.com</code>
-            <br />
-            Password: <code className="bg-white px-1 py-0.5 rounded border border-gold-300 font-mono font-bold">TplAdmin2026!</code>
-          </p>
-        </div>
       </div>
     </div>
   );
