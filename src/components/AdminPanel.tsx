@@ -594,6 +594,8 @@ export default function AdminPanel({ user, onLogout }: AdminPanelProps) {
                 systemLogs={systemLogs}
                 onReplyToContact={handleReplyToContact}
                 activeTab={activeTab}
+                shipments={shipments}
+                adminEmail={user.email || "admin@tpl-logistics.gov.tm"}
               />
             )}
 

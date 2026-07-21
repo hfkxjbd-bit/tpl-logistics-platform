@@ -62,10 +62,12 @@ export interface Notification {
   trackingNumber: string;
   recipientEmail: string;
   recipientName: string;
-  recipientType: "Sender" | "Receiver";
+  recipientType: "Sender" | "Receiver" | "Customer";
   subject: string;
   body: string;
   status: "Sent" | "Failed" | "Pending";
   timestamp: string; // ISO date string
+  sentBy?: string;
+  type?: string;
 }
 

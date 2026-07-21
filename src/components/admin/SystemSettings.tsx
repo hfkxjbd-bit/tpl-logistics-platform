@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from "react";
-import { Notification } from "../../types";
+import { Notification, Shipment } from "../../types";
 import { ContactMessage, CalculatorSettings, PricingRule, SystemLog } from "./adminTypes";
 import { db } from "../../lib/firebase";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc, collection, addDoc, onSnapshot } from "firebase/firestore";
 import { 
   Scale, DollarSign, Activity, Mail, Settings2, Shield, Clock, 
   MessageSquare, Plus, Trash2, CheckCircle, AlertTriangle, Key, 
-  Terminal, Lock, EyeOff 
+  Terminal, Lock, EyeOff, Send, Search, Paperclip, AlertCircle, UserCheck
 } from "lucide-react";
 
 interface SystemSettingsProps {
@@ -15,6 +15,8 @@ interface SystemSettingsProps {
   systemLogs: SystemLog[];
   onReplyToContact?: (messageId: string, replyText: string) => Promise<void>;
   activeTab?: string;
+  shipments?: Shipment[];
+  adminEmail?: string;
 }
 
 export default function SystemSettings({
@@ -22,9 +24,11 @@ export default function SystemSettings({
   contacts,
   systemLogs,
   onReplyToContact,
-  activeTab
+  activeTab,
+  shipments = [],
+  adminEmail = "admin@tpl-logistics.gov.tm"
 }: SystemSettingsProps) {
-  const [subTab, setSubTab] = useState<"calc" | "pricing" | "live" | "notifications" | "email_sms" | "security" | "logs">("calc");
+  const [subTab, setSubTab] = useState<"calc" | "pricing" | "live" | "notifications" | "send_email" | "email_sms" | "security" | "logs">("calc");
 
   // Sync subTab with activeTab prop
   useEffect(() => {
@@ -65,6 +69,78 @@ export default function SystemSettings({
   const [draftSubject, setDraftSubject] = useState("");
   const [draftBody, setDraftBody] = useState("");
   const [draftSuccess, setDraftSuccess] = useState(false);
+
+  // Custom Email Composer & Customer Search states
+  const [customers, setCustomers] = useState<{ name: string; email: string }[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filteredCustomers, setFilteredCustomers] = useState<{ name: string; email: string }[]>([]);
+  const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
+  
+  const [customRecipientName, setCustomRecipientName] = useState("");
+  const [customRecipientEmail, setCustomRecipientEmail] = useState("");
+  const [customSubject, setCustomSubject] = useState("");
+  const [customBody, setCustomBody] = useState("");
+  const [attachShipment, setAttachShipment] = useState(false);
+  const [selectedShipmentNo, setSelectedShipmentNo] = useState("");
+  const [customerShipments, setCustomerShipments] = useState<Shipment[]>([]);
+  
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
+  const [emailSendSuccess, setEmailSendSuccess] = useState<string | null>(null);
+  const [emailSendError, setEmailSendError] = useState<string | null>(null);
+
+  // Compile unique customer lists from shipments array
+  useEffect(() => {
+    if (shipments && shipments.length > 0) {
+      const uniqueCustomers = new Map<string, string>();
+      shipments.forEach(s => {
+        if (s.senderEmail && s.senderName) {
+          uniqueCustomers.set(s.senderEmail.toLowerCase().trim(), s.senderName.trim());
+        }
+        if (s.receiverEmail && s.receiverName) {
+          uniqueCustomers.set(s.receiverEmail.toLowerCase().trim(), s.receiverName.trim());
+        }
+      });
+      const list = Array.from(uniqueCustomers.entries()).map(([email, name]) => ({
+        name,
+        email
+      }));
+      setCustomers(list);
+    }
+  }, [shipments]);
+
+  // Filter customers as search query changes
+  useEffect(() => {
+    if (searchQuery.trim() === "") {
+      setFilteredCustomers([]);
+    } else {
+      const queryLower = searchQuery.toLowerCase();
+      const filtered = customers.filter(c => 
+        c.name.toLowerCase().includes(queryLower) || 
+        c.email.toLowerCase().includes(queryLower)
+      );
+      setFilteredCustomers(filtered);
+    }
+  }, [searchQuery, customers]);
+
+  // Find shipments of the selected recipient for attachments
+  useEffect(() => {
+    if (customRecipientEmail) {
+      const lowerEmail = customRecipientEmail.toLowerCase().trim();
+      const matchingShipments = shipments.filter(s => 
+        (s.senderEmail?.toLowerCase().trim() === lowerEmail) || 
+        (s.receiverEmail?.toLowerCase().trim() === lowerEmail)
+      );
+      setCustomerShipments(matchingShipments);
+      if (matchingShipments.length > 0) {
+        setSelectedShipmentNo(matchingShipments[0].trackingNumber);
+      } else {
+        setSelectedShipmentNo("");
+      }
+    } else {
+      setCustomerShipments([]);
+      setSelectedShipmentNo("");
+    }
+  }, [customRecipientEmail, shipments]);
 
   // D. Contact Reply states
   const [activeMessageReply, setActiveMessageReply] = useState<ContactMessage | null>(null);
@@ -206,15 +282,78 @@ export default function SystemSettings({
     }
   };
 
-  const handleSendDraftAlert = (e: React.FormEvent) => {
+  const handleSendCustomEmail = async (e: React.FormEvent) => {
     e.preventDefault();
-    setDraftSuccess(true);
-    setTimeout(() => {
-      setDraftSuccess(false);
-      setDraftRecipient("");
-      setDraftSubject("");
-      setDraftBody("");
-    }, 2500);
+    if (!customRecipientEmail || !customRecipientName || !customSubject || !customBody) {
+      setEmailSendError("Please complete all required fields.");
+      return;
+    }
+
+    // Validate email address before sending (Requirement 8)
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(customRecipientEmail)) {
+      setEmailSendError("Please enter a valid recipient email address.");
+      return;
+    }
+
+    setIsSendingEmail(true);
+    setEmailSendSuccess(null);
+    setEmailSendError(null);
+
+    try {
+      // Enqueue document into the notifications collection in Firestore
+      const docRef = await addDoc(collection(db, "notifications"), {
+        trackingNumber: attachShipment ? selectedShipmentNo : "GENERAL",
+        recipientEmail: customRecipientEmail.trim(),
+        recipientName: customRecipientName.trim(),
+        recipientType: "Customer",
+        subject: customSubject.trim(),
+        body: customBody.trim(),
+        status: "Pending",
+        timestamp: new Date().toISOString(),
+        sentBy: adminEmail,
+        type: "manual"
+      });
+
+      // Let's set up a real-time Firestore listener to monitor delivery status
+      const unsub = onSnapshot(doc(db, "notifications", docRef.id), (docSnap) => {
+        if (docSnap.exists()) {
+          const updated = docSnap.data();
+          if (updated.status === "Sent") {
+            setEmailSendSuccess("Email dispatched and delivered successfully via SMTP!");
+            setIsSendingEmail(false);
+            
+            // Reset form fields
+            setCustomRecipientName("");
+            setCustomRecipientEmail("");
+            setCustomSubject("");
+            setCustomBody("");
+            setAttachShipment(false);
+            setSearchQuery("");
+            
+            unsub();
+          } else if (updated.status === "Failed") {
+            setEmailSendError(`SMTP dispatch failed: ${updated.error || "No response received from mail server"}`);
+            setIsSendingEmail(false);
+            unsub();
+          }
+        }
+      });
+
+      // 15-second safety fallback timeout if functions trigger lags
+      setTimeout(() => {
+        unsub();
+        if (isSendingEmail) {
+          setIsSendingEmail(false);
+          setEmailSendSuccess("Email enqueued in outbox. Dispatch is processing in the background.");
+        }
+      }, 15000);
+
+    } catch (err: any) {
+      console.error("Failed to enqueue email:", err);
+      setEmailSendError(`Failed to queue email: ${err.message || "Network exception"}`);
+      setIsSendingEmail(false);
+    }
   };
 
   const handleExecuteReplySubmit = async (e: React.FormEvent) => {
@@ -251,6 +390,7 @@ export default function SystemSettings({
           { id: "pricing", label: "Pricing Management", icon: DollarSign },
           { id: "live", label: "Live Terminal Feed", icon: Activity },
           { id: "notifications", label: "Alert Logs & Messages", icon: Mail },
+          { id: "send_email", label: "Send Custom Email", icon: Send },
           { id: "email_sms", label: "Email & SMS Settings", icon: Settings2 },
           { id: "security", label: "Security Settings", icon: Shield },
           { id: "logs", label: "System Audit Logs", icon: Clock }
@@ -970,6 +1110,254 @@ export default function SystemSettings({
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {/* SUB-VIEW G: SEND CUSTOM EMAIL & HISTORY */}
+      {subTab === "send_email" && (
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 text-xs">
+          
+          {/* Column 1: Custom Email Composer */}
+          <form onSubmit={handleSendCustomEmail} className="bg-white p-6 rounded-2xl border border-gray-150 shadow-sm space-y-6">
+            <div className="flex justify-between items-center border-b border-gray-100 pb-3">
+              <h3 className="font-bold uppercase text-black tracking-wider flex items-center gap-1.5">
+                <Send className="w-4.5 h-4.5 text-gold-600" />
+                Administrative Email Composer
+              </h3>
+              <span className="text-[10px] bg-black text-gold-500 font-extrabold px-2 py-0.5 rounded uppercase tracking-wider font-mono">
+                Real-time SMTP
+              </span>
+            </div>
+
+            <div className="space-y-4">
+              {/* Customer Search Autocomplete */}
+              <div className="space-y-1.5 relative">
+                <label className="font-bold text-gray-700 flex items-center gap-1">
+                  <Search className="w-3.5 h-3.5 text-gray-400" />
+                  Search Registered Customers
+                </label>
+                <input 
+                  type="text" 
+                  placeholder="Type name or email to search..."
+                  value={searchQuery}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    setShowCustomerDropdown(true);
+                  }}
+                  onFocus={() => setShowCustomerDropdown(true)}
+                  className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white text-xs font-semibold text-black"
+                />
+                
+                {showCustomerDropdown && filteredCustomers.length > 0 && (
+                  <div className="absolute left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-10 max-h-48 overflow-y-auto divide-y divide-gray-50">
+                    {filteredCustomers.map((c, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => {
+                          setCustomRecipientName(c.name);
+                          setCustomRecipientEmail(c.email);
+                          setShowCustomerDropdown(false);
+                        }}
+                        className="w-full text-left px-4 py-2 hover:bg-neutral-50 flex items-center justify-between font-semibold"
+                      >
+                        <span className="text-black uppercase">{c.name}</span>
+                        <span className="text-gray-400 font-mono text-[10px]">{c.email}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <p className="text-[10px] text-gray-400">Instantly loads unique customer contacts fetched from current shipment ledgers.</p>
+              </div>
+
+              {/* Recipient Details */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="font-bold text-gray-600">Recipient Display Name</label>
+                  <input 
+                    type="text" 
+                    required
+                    placeholder="e.g. Ahmet Turkmen"
+                    value={customRecipientName}
+                    onChange={(e) => setCustomRecipientName(e.target.value)}
+                    className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white text-xs font-semibold text-black"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="font-bold text-gray-600">Recipient Email Address</label>
+                  <input 
+                    type="email" 
+                    required
+                    placeholder="e.g. ahmet@gmail.com"
+                    value={customRecipientEmail}
+                    onChange={(e) => setCustomRecipientEmail(e.target.value)}
+                    className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white text-xs font-semibold text-black font-mono"
+                  />
+                </div>
+              </div>
+
+              {/* Subject */}
+              <div className="space-y-1">
+                <label className="font-bold text-gray-600">Subject Line</label>
+                <input 
+                  type="text" 
+                  required
+                  placeholder="e.g. Important update regarding your consignment"
+                  value={customSubject}
+                  onChange={(e) => setCustomSubject(e.target.value)}
+                  className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white text-xs font-semibold text-black"
+                />
+              </div>
+
+              {/* Email Body */}
+              <div className="space-y-1">
+                <label className="font-bold text-gray-600">Message Body (HTML enabled)</label>
+                <textarea 
+                  required
+                  rows={6}
+                  placeholder="Type your message body here..."
+                  value={customBody}
+                  onChange={(e) => setCustomBody(e.target.value)}
+                  className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white text-xs font-medium text-black leading-relaxed"
+                ></textarea>
+              </div>
+
+              {/* Attach Shipment */}
+              <div className="bg-gray-50 p-4 rounded-xl border border-gray-150 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-gray-700 flex items-center gap-1.5">
+                    <Paperclip className="w-4 h-4 text-gray-500" />
+                    Attach Shipment details to template?
+                  </span>
+                  <input 
+                    type="checkbox"
+                    checked={attachShipment}
+                    disabled={customerShipments.length === 0}
+                    onChange={(e) => setAttachShipment(e.target.checked)}
+                    className="rounded text-gold-500 focus:ring-gold-500 w-4 h-4 cursor-pointer disabled:opacity-50"
+                  />
+                </div>
+
+                {attachShipment && customerShipments.length > 0 && (
+                  <div className="space-y-1.5">
+                    <label className="font-bold text-gray-600">Select Shipment</label>
+                    <select
+                      value={selectedShipmentNo}
+                      onChange={(e) => setSelectedShipmentNo(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-gray-200 rounded-xl font-bold text-black text-xs"
+                    >
+                      {customerShipments.map((s) => (
+                        <option key={s.trackingNumber} value={s.trackingNumber}>
+                          {s.trackingNumber} - {s.parcelDescription} ({s.status})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {customerShipments.length === 0 && (
+                  <p className="text-[10px] text-gray-400 italic">No existing shipments registered for this recipient's email to attach.</p>
+                )}
+              </div>
+
+              {/* Feedback States */}
+              {emailSendError && (
+                <div className="p-3 bg-red-50 border border-red-100 text-red-800 rounded-xl flex items-center gap-2 font-bold animate-shake">
+                  <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
+                  <span>{emailSendError}</span>
+                </div>
+              )}
+
+              {emailSendSuccess && (
+                <div className="p-3 bg-emerald-50 border border-emerald-100 text-emerald-800 rounded-xl flex items-center gap-2 font-bold animate-fadeIn">
+                  <CheckCircle className="w-5 h-5 text-emerald-600 flex-shrink-0" />
+                  <span>{emailSendSuccess}</span>
+                </div>
+              )}
+
+              {/* Submit Buttons */}
+              <button
+                type="submit"
+                disabled={isSendingEmail}
+                className="w-full py-3 bg-black text-gold-500 hover:bg-neutral-900 border border-neutral-800 font-extrabold rounded-xl transition-all cursor-pointer shadow-sm flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {isSendingEmail ? (
+                  <div className="flex items-center gap-2">
+                    <Activity className="w-4 h-4 animate-spin text-gold-500" />
+                    <span>Executing SMTP Dispatch...</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <Send className="w-4 h-4" />
+                    <span>Dispatch Custom Email</span>
+                  </div>
+                )}
+              </button>
+            </div>
+          </form>
+
+          {/* Column 2: Email History Page */}
+          <div className="bg-white p-6 rounded-2xl border border-gray-150 shadow-sm space-y-6 flex flex-col max-h-[700px]">
+            <div className="flex justify-between items-center border-b border-gray-100 pb-3 flex-shrink-0">
+              <h3 className="font-bold uppercase text-black tracking-wider flex items-center gap-1.5">
+                <Clock className="w-4.5 h-4.5 text-gold-600" />
+                Email dispatch history ledger
+              </h3>
+              <span className="text-[10px] bg-gray-100 text-gray-600 font-bold px-2 py-0.5 rounded">
+                Live Audits
+              </span>
+            </div>
+
+            <div className="overflow-y-auto flex-1 divide-y divide-gray-150 pr-1 space-y-4">
+              {notifications.filter(n => n.type === "manual" || n.sentBy !== "System").length === 0 ? (
+                <div className="py-24 text-center text-gray-400 space-y-2">
+                  <Mail className="w-8 h-8 mx-auto text-gray-200" />
+                  <p className="font-bold">No custom administrative emails recorded.</p>
+                </div>
+              ) : (
+                notifications
+                  .filter(n => n.type === "manual" || n.sentBy !== "System")
+                  .map((n) => {
+                    const isSent = n.status === "Sent";
+                    const isFailed = n.status === "Failed";
+                    const isPending = n.status === "Pending";
+                    return (
+                      <div key={n.id} className="pt-4 first:pt-0 space-y-2">
+                        <div className="flex justify-between items-start">
+                          <div className="space-y-0.5">
+                            <span className="font-extrabold text-black uppercase tracking-wide">{n.recipientName}</span>
+                            <p className="text-gray-400 font-mono text-[10px]">{n.recipientEmail}</p>
+                          </div>
+                          
+                          {/* Badge */}
+                          <span className={`px-2 py-0.5 rounded font-extrabold text-[9px] uppercase tracking-wider ${
+                            isSent ? "bg-emerald-50 text-emerald-700 border border-emerald-200/40" :
+                            isFailed ? "bg-red-50 text-red-700 border border-red-200/40" :
+                            "bg-amber-50 text-amber-700 border border-amber-200/40 animate-pulse"
+                          }`}>
+                            {n.status}
+                          </span>
+                        </div>
+
+                        <div className="space-y-1">
+                          <p className="font-bold text-black">Subject: {n.subject}</p>
+                          <p className="text-gray-600 italic leading-relaxed text-[11px] whitespace-pre-wrap">"{n.body}"</p>
+                        </div>
+
+                        <div className="flex justify-between items-center text-[9px] text-gray-400 font-mono border-t border-gray-50 pt-1.5">
+                          <span className="flex items-center gap-1">
+                            <UserCheck className="w-3.5 h-3.5 text-gray-400" />
+                            Admin: <strong className="text-gray-600 uppercase font-bold">{n.sentBy || "System Admin"}</strong>
+                          </span>
+                          <span>{new Date(n.timestamp).toLocaleString()}</span>
+                        </div>
+                      </div>
+                    );
+                  })
+              )}
+            </div>
+          </div>
+
         </div>
       )}
     </div>
