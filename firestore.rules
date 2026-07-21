@@ -1,0 +1,104 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Secure IDs: only permit alphanumeric, hyphens and underscores up to 128 chars
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_-]+$');
+    }
+    
+    function incoming() {
+      return request.resource.data;
+    }
+    
+    function existing() {
+      return resource.data;
+    }
+    
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == 'hfkxjbd@gmail.com' ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+    
+    // Shipment Entity Validation Helper
+    function isValidShipment(data) {
+      return data.trackingNumber is string && data.trackingNumber.size() >= 5 && data.trackingNumber.size() <= 50 &&
+             data.senderName is string && data.senderName.size() >= 1 && data.senderName.size() <= 100 &&
+             data.receiverName is string && data.receiverName.size() >= 1 && data.receiverName.size() <= 100 &&
+             data.originCountry is string && data.originCountry.size() >= 1 && data.originCountry.size() <= 100 &&
+             data.destinationCountry is string && data.destinationCountry.size() >= 1 && data.destinationCountry.size() <= 100 &&
+             data.status is string && (
+               data.status == 'Booking Pending' ||
+               data.status == 'Shipment Created' ||
+               data.status == 'Package Received' ||
+               data.status == 'Processing' ||
+               data.status == 'Cleared Customs' ||
+               data.status == 'In Transit' ||
+               data.status == 'Arrived at Distribution Center' ||
+               data.status == 'Out for Delivery' ||
+               data.status == 'Delivered' ||
+               data.status == 'Delivery Failed' ||
+               data.status == 'Returned to Sender' ||
+               data.status == 'Held at Customs'
+             );
+    }
+
+    match /shipments/{shipmentId} {
+      // Public access to single parcel lookups using trackingNumber as doc ID
+      allow get: if isValidId(shipmentId);
+      
+      // Admin operations for searching, editing, and managing
+      allow list: if isAdmin();
+      allow create: if (isAdmin() || incoming().status == 'Booking Pending') && isValidShipment(incoming()) && isValidId(shipmentId);
+      allow update: if isAdmin() && isValidShipment(incoming());
+      allow delete: if isAdmin();
+    }
+    
+    match /admins/{adminId} {
+      allow read: if isSignedIn() && isValidId(adminId);
+      allow write: if isAdmin() && isValidId(adminId);
+    }
+    
+    match /notifications/{notificationId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin() || (incoming().status == 'Sent' && incoming().trackingNumber is string);
+      allow update, delete: if isAdmin();
+    }
+    
+    match /contacts/{contactId} {
+      allow read, write: if isAdmin();
+      allow create: if isValidId(contactId);
+    }
+    
+    match /applications/{applicationId} {
+      allow read, write: if isAdmin();
+      allow create: if isValidId(applicationId);
+    }
+    
+    match /chat_logs/{logId} {
+      allow read: if isAdmin();
+      allow create, update: if isValidId(logId);
+      allow delete: if isAdmin();
+    }
+    
+    match /test/{document} {
+      allow read: if true;
+    }
+    
+    match /system/{document} {
+      allow read: if true;
+      allow write: if isAdmin() || (document == 'metadata' && incoming().lastDate is string && incoming().lastSequence >= 1);
+    }
+  }
+}

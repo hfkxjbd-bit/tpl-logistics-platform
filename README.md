@@ -1,11 +1,15 @@
-<div align="center">
+# Turkmenistanyn Poçtasy Limited (TPL) Logistics Platform
 
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+A production-grade, highly sophisticated, full-stack digital freight management and tracking system designed for Turkmenistanyn Poçtasy Limited (TPL). The platform handles international Silk Road shipments, customs clearances, automated booking clearances, staff email allocation, and SMS/Email notification logs.
 
-  <h1>Built with AI Studio</h2>
+## Core Architectural Stack
+- **Frontend**: React 19, Vite, Tailwind CSS, Lucide Icons, Framer Motion.
+- **Backend & APIs**: Node.js Express server (`server.ts`) with custom routing.
+- **AI Integrations**: Gemini LLM utilizing the modern `@google/genai` SDK for automated customs clearance assessments and synthetic cargo reports.
+- **Cloud Persistence**: Firebase (Firestore & Authentication) for reliable data persistence.
 
-  <p>The fastest path from prompt to production with Gemini.</p>
-
-  <a href="https://aistudio.google.com/apps">Start building</a>
-
-</div>
+## Project Structure
+- `/src/components/` - User interface modules separated by concerns.
+- `/src/components/admin/` - Custom operator and administrator modules.
+- `/src/lib/` - Shared services, geographic database registries, and Firebase adapters.
+- `/server.ts` - Production-ready Express API Gateway and static file router.

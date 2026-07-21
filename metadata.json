@@ -1,0 +1,6 @@
+{
+  "name": "Turkmenistanyn Poctasy Limited Tracking",
+  "description": "Premium parcel tracking and logistics management web application for Turkmenistanyn Poctasy Limited.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

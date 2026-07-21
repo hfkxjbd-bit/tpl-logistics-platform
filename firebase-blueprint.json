@@ -1,0 +1,137 @@
+{
+  "entities": {
+    "shipment": {
+      "title": "Shipment",
+      "description": "A parcel shipment record tracked by Turkmenistanyn Poctasy Limited.",
+      "type": "object",
+      "properties": {
+        "trackingNumber": {
+          "type": "string",
+          "description": "Unique tracking number matching format TPL-YYYYMMDD-000001"
+        },
+        "senderName": { "type": "string" },
+        "senderPhone": { "type": "string" },
+        "senderEmail": { "type": "string" },
+        "receiverName": { "type": "string" },
+        "receiverPhone": { "type": "string" },
+        "receiverEmail": { "type": "string" },
+        "originCountry": { "type": "string" },
+        "destinationCountry": { "type": "string" },
+        "parcelDescription": { "type": "string" },
+        "parcelWeight": { "type": "number" },
+        "shippingMethod": { "type": "string" },
+        "shippingDate": { "type": "string" },
+        "expectedDeliveryDate": { "type": "string" },
+        "currentLocation": { "type": "string" },
+        "status": {
+          "type": "string",
+          "enum": [
+            "Booking Pending",
+            "Shipment Created",
+            "Package Received",
+            "Processing",
+            "Cleared Customs",
+            "In Transit",
+            "Arrived at Distribution Center",
+            "Out for Delivery",
+            "Delivered",
+            "Delivery Failed",
+            "Returned to Sender",
+            "Held at Customs"
+          ]
+        },
+        "deliveryProofUrl": { "type": "string" },
+        "notes": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "createdBy": { "type": "string" },
+        "history": {
+          "type": "array",
+          "description": "Chronological array of historical state records for tracking"
+        }
+      },
+      "required": [
+        "trackingNumber",
+        "senderName",
+        "receiverName",
+        "originCountry",
+        "destinationCountry",
+        "status"
+      ]
+    },
+    "admin": {
+      "title": "Admin",
+      "description": "Admin access list",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "name": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email"]
+    },
+    "metadata": {
+      "title": "Metadata",
+      "description": "System tracking counters",
+      "type": "object",
+      "properties": {
+        "lastSequence": { "type": "number" },
+        "lastDate": { "type": "string" }
+      },
+      "required": ["lastSequence", "lastDate"]
+    },
+    "notification": {
+      "title": "Notification",
+      "description": "An automated notification email sent to sender or receiver.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "trackingNumber": { "type": "string" },
+        "recipientEmail": { "type": "string" },
+        "recipientName": { "type": "string" },
+        "recipientType": { "type": "string", "enum": ["Sender", "Receiver"] },
+        "subject": { "type": "string" },
+        "body": { "type": "string" },
+        "status": { "type": "string", "enum": ["Sent", "Failed", "Pending"] },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["trackingNumber", "recipientEmail", "recipientName", "recipientType", "subject", "body", "status", "timestamp"]
+    },
+    "chat_log": {
+      "title": "Chat Log",
+      "description": "A live assistant chat conversation session transcript.",
+      "type": "object",
+      "properties": {
+        "sessionId": { "type": "string" },
+        "messages": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "status": { "type": "string" }
+      },
+      "required": ["sessionId", "messages", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/shipments/{shipmentId}": {
+      "schema": "shipment",
+      "description": "All parcel shipment details"
+    },
+    "/admins/{adminId}": {
+      "schema": "admin",
+      "description": "List of system administrators"
+    },
+    "/system/metadata": {
+      "schema": "metadata",
+      "description": "System wide configuration and tracking counter state"
+    },
+    "/notifications/{notificationId}": {
+      "schema": "notification",
+      "description": "Automated status notification logs"
+    },
+    "/chat_logs/{logId}": {
+      "schema": "chat_log",
+      "description": "Transcripts of customer interactions with Live Assistant"
+    }
+  }
+}
