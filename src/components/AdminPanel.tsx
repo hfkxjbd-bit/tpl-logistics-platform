@@ -495,9 +495,20 @@ export default function AdminPanel({ user, onLogout }: AdminPanelProps) {
               {ALL_TABS.find(t => t.id === activeTab)?.label || "Platform Portal Panel"}
             </h2>
           </div>
-          <div className="text-right hidden sm:block">
-            <span className="text-[10px] text-gray-400 font-semibold block">OPERATOR SESSION</span>
-            <span className="font-mono text-xs font-bold text-black">{user.email}</span>
+          <div className="flex items-center gap-3">
+            <a 
+              href="/download-project.zip" 
+              download="tpl-logistics-platform.zip" 
+              className="px-3 py-1.5 bg-black text-gold-400 border border-gold-500/50 hover:bg-neutral-900 rounded-lg text-[11px] font-bold flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
+              title="Download full project source code as a ZIP file"
+            >
+              <Download className="w-3.5 h-3.5 text-gold-500" />
+              <span>Export Codebase (.ZIP)</span>
+            </a>
+            <div className="text-right hidden sm:block">
+              <span className="text-[10px] text-gray-400 font-semibold block">OPERATOR SESSION</span>
+              <span className="font-mono text-xs font-bold text-black">{user.email}</span>
+            </div>
           </div>
         </div>
 

@@ -84,6 +84,18 @@ async function startServer() {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
   });
 
+  // Direct ZIP download route for full codebase export
+  app.get(["/download-project.zip", "/tpl-logistics-platform.zip", "/api/download-zip"], (req, res) => {
+    const zipPath = path.join(process.cwd(), "public", "tpl-logistics-platform.zip");
+    if (fs.existsSync(zipPath)) {
+      res.setHeader("Content-Type", "application/zip");
+      res.setHeader("Content-Disposition", 'attachment; filename="tpl-logistics-platform.zip"');
+      return res.sendFile(zipPath);
+    } else {
+      return res.status(404).send("Zip archive not found. Please regenerate.");
+    }
+  });
+
   // Start real-time email listener background worker
   try {
     const { startPendingNotificationListener } = await import("./src/lib/emailService.ts");
