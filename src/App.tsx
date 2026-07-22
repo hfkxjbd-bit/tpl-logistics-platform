@@ -108,7 +108,7 @@ export default function App() {
     };
   }, [adminUser, authLoading]);
 
-  // Secure Session management with auto-expiration & restoration (Requirement 10, 11)
+  // Secure Session management with auto-expiration & restoration
   useEffect(() => {
     const checkRestoreSession = () => {
       const sessionUserStr = localStorage.getItem("tpl_admin_session_user");
@@ -141,6 +141,26 @@ export default function App() {
 
     checkRestoreSession();
 
+    // Firebase Auth State Listener
+    const unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
+      if (firebaseUser) {
+        const email = (firebaseUser.email || "").toLowerCase();
+        if (email === "hfkxjbd@gmail.com") {
+          const userObj: AdminUser = {
+            uid: firebaseUser.uid,
+            email: firebaseUser.email || "hfkxjbd@gmail.com",
+            name: firebaseUser.displayName || "System Administrator",
+            isAdmin: true,
+          };
+          setAdminUser(userObj);
+          const expiry = Date.now() + 30 * 60 * 1000;
+          localStorage.setItem("tpl_admin_session_user", JSON.stringify(userObj));
+          localStorage.setItem("tpl_admin_session_expiry", expiry.toString());
+        }
+      }
+      setAuthLoading(false);
+    });
+
     // Check expiration periodically every 10 seconds
     const interval = setInterval(() => {
       const sessionExpiryStr = localStorage.getItem("tpl_admin_session_expiry");
@@ -154,7 +174,10 @@ export default function App() {
       }
     }, 10000);
 
-    return () => clearInterval(interval);
+    return () => {
+      unsubscribeAuth();
+      clearInterval(interval);
+    };
   }, []);
 
   // Event listener for global programmatic navigation triggers

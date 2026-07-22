@@ -1,24 +1,41 @@
 import React, { useState } from "react";
 import { auth, db } from "../lib/firebase";
-import { GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword } from "firebase/auth";
+import {
+  GoogleAuthProvider,
+  signInWithPopup,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  sendPasswordResetEmail,
+} from "firebase/auth";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { AdminUser } from "../types";
-import { ShieldAlert, Key, Loader2, ArrowRight, Mail, Lock } from "lucide-react";
+import { ShieldAlert, ShieldCheck, Key, Loader2, ArrowRight, Mail, Lock, CheckCircle2, X } from "lucide-react";
 import CompanyLogo from "./CompanyLogo";
 
 interface AdminLoginProps {
   onLoginSuccess: (user: AdminUser) => void;
 }
 
+const SUPER_ADMIN_EMAIL = "hfkxjbd@gmail.com";
+
 export default function AdminLogin({ onLoginSuccess }: AdminLoginProps) {
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(SUPER_ADMIN_EMAIL);
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  // Forgot Password modal/view state
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [resetEmail, setResetEmail] = useState(SUPER_ADMIN_EMAIL);
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetSuccess, setResetSuccess] = useState<string | null>(null);
+  const [resetError, setResetError] = useState<string | null>(null);
 
   const handleGoogleSignIn = async () => {
     setLoading(true);
     setError(null);
+    setSuccess(null);
     try {
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: "select_account" });
@@ -26,30 +43,54 @@ export default function AdminLogin({ onLoginSuccess }: AdminLoginProps) {
       const user = result.user;
 
       if (user) {
+        const userEmail = (user.email || "").toLowerCase();
+        const isSuperAdminEmail = userEmail === SUPER_ADMIN_EMAIL.toLowerCase();
+
         const adminDocRef = doc(db, "admins", user.uid);
         const adminDoc = await getDoc(adminDocRef);
 
-        if (!adminDoc.exists()) {
-          await setDoc(adminDocRef, {
-            uid: user.uid,
-            email: user.email,
-            name: user.displayName || "Administrator",
-            createdAt: new Date().toISOString(),
-          });
-        }
+        if (isSuperAdminEmail || adminDoc.exists()) {
+          if (!adminDoc.exists()) {
+            await setDoc(adminDocRef, {
+              uid: user.uid,
+              email: user.email,
+              name: user.displayName || "Super Administrator",
+              role: "Super Administrator",
+              isSuperAdmin: true,
+              permissions: ["all"],
+              createdAt: new Date().toISOString(),
+              lastLoginAt: new Date().toISOString(),
+            }, { merge: true });
+          } else {
+            await setDoc(adminDocRef, {
+              lastLoginAt: new Date().toISOString(),
+            }, { merge: true });
+          }
 
-        onLoginSuccess({
-          uid: user.uid,
-          email: user.email,
-          name: user.displayName || "Administrator",
-          isAdmin: true,
-        });
+          onLoginSuccess({
+            uid: user.uid,
+            email: user.email || SUPER_ADMIN_EMAIL,
+            name: user.displayName || "System Administrator",
+            isAdmin: true,
+          });
+        } else {
+          setError(`Access Denied: The Google account (${user.email}) is not registered as an authorized administrator.`);
+        }
       }
     } catch (err: any) {
       console.error("Google Sign-In Error: ", err);
-      setError(
-        "Google Sign-In was blocked or cancelled. Please use the secure administrator credentials below."
-      );
+      if (err.code === "auth/unauthorized-domain") {
+        const hostname = window.location.hostname;
+        setError(
+          `Domain "${hostname}" is not authorized for Google Sign-In in Firebase Console. To enable Google Sign-In on Netlify, add "${hostname}" in Firebase Console -> Authentication -> Settings -> Authorized Domains.`
+        );
+      } else if (err.code === "auth/popup-closed-by-user") {
+        setError("Google Sign-In popup was closed before completing authorization.");
+      } else if (err.code === "auth/popup-blocked") {
+        setError("Google Sign-In popup was blocked by your browser. Please allow popups for this domain.");
+      } else {
+        setError(err.message || "Google Sign-In failed. Please try password sign-in.");
+      }
     } finally {
       setLoading(false);
     }
@@ -58,39 +99,58 @@ export default function AdminLogin({ onLoginSuccess }: AdminLoginProps) {
   const handleSecureLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    if (!email || !password) {
+    setSuccess(null);
+
+    const inputEmail = email.trim().toLowerCase();
+    const trimmedPassword = password.trim();
+
+    if (!inputEmail || !trimmedPassword) {
       setError("Please fill in both email and password fields.");
       return;
     }
 
     setLoading(true);
     try {
-      const targetEmail = "hfkxjbd@gmail.com";
-      const inputEmail = email.trim().toLowerCase();
-
-      if (inputEmail !== targetEmail) {
-        setError("Invalid administrative email or password. Access Denied.");
-        setLoading(false);
-        return;
-      }
-
       let userCred;
       try {
-        // Authenticate directly with Firebase Authentication using the entered password
-        userCred = await signInWithEmailAndPassword(auth, targetEmail, password.trim());
+        // Step 1: Attempt direct Firebase Authentication sign-in
+        userCred = await signInWithEmailAndPassword(auth, inputEmail, trimmedPassword);
       } catch (authErr: any) {
-        // If the user doesn't exist yet in Firebase Authentication, attempt automatic creation (Requirement 6)
+        console.warn("Firebase Auth sign-in result:", authErr.code, authErr.message);
+
+        // Step 2: If account does not exist or invalid credentials for super admin, auto-provision
         if (
-          authErr.code === "auth/user-not-found" ||
-          authErr.code === "auth/invalid-credential" ||
-          authErr.code === "auth/wrong-password"
+          inputEmail === SUPER_ADMIN_EMAIL.toLowerCase() &&
+          (authErr.code === "auth/user-not-found" || authErr.code === "auth/invalid-credential")
         ) {
           try {
-            userCred = await createUserWithEmailAndPassword(auth, targetEmail, password.trim());
-          } catch (createErr) {
-            console.warn("Could not auto-create Admin Auth user:", createErr);
-            throw authErr; // Rethrow original error if creation fails
+            userCred = await createUserWithEmailAndPassword(auth, inputEmail, trimmedPassword);
+            setSuccess("Super Administrator account successfully provisioned in Firebase Authentication!");
+          } catch (createErr: any) {
+            if (createErr.code === "auth/email-already-in-use") {
+              setError(
+                `Incorrect password for ${inputEmail}. If you forgot your password, click 'Forgot Password?' below to reset it via email.`
+              );
+              setLoading(false);
+              return;
+            } else if (createErr.code === "auth/weak-password") {
+              setError("Password must be at least 6 characters long.");
+              setLoading(false);
+              return;
+            } else {
+              throw createErr;
+            }
           }
+        } else if (authErr.code === "auth/wrong-password" || authErr.code === "auth/invalid-credential") {
+          setError(
+            `Incorrect password for ${inputEmail}. If you forgot your password, click 'Forgot Password?' below.`
+          );
+          setLoading(false);
+          return;
+        } else if (authErr.code === "auth/too-many-requests") {
+          setError("Access temporarily blocked due to multiple failed attempts. Please use 'Forgot Password?' to reset your password.");
+          setLoading(false);
+          return;
         } else {
           throw authErr;
         }
@@ -99,18 +159,22 @@ export default function AdminLogin({ onLoginSuccess }: AdminLoginProps) {
       if (userCred && userCred.user) {
         const user = userCred.user;
         const adminDocRef = doc(db, "admins", user.uid);
-        
-        // Ensure the administrator role is assigned in Firestore (Requirement 6)
+
+        // Ensure administrator document exists in Firestore with full permissions
         await setDoc(adminDocRef, {
           uid: user.uid,
-          email: targetEmail,
-          name: "System Administrator",
+          email: inputEmail,
+          name: user.displayName || "System Administrator",
+          role: "Super Administrator",
+          isSuperAdmin: true,
+          permissions: ["all"],
           createdAt: new Date().toISOString(),
+          lastLoginAt: new Date().toISOString(),
         }, { merge: true });
 
         onLoginSuccess({
           uid: user.uid,
-          email: targetEmail,
+          email: inputEmail,
           name: "System Administrator",
           isAdmin: true,
         });
@@ -119,9 +183,38 @@ export default function AdminLogin({ onLoginSuccess }: AdminLoginProps) {
       }
     } catch (err: any) {
       console.error("Secure login error:", err);
-      setError("Invalid administrative email or password. Access Denied.");
+      setError(err.message || "Invalid administrative email or password. Access Denied.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handlePasswordReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setResetError(null);
+    setResetSuccess(null);
+
+    const targetEmail = (resetEmail || email || SUPER_ADMIN_EMAIL).trim().toLowerCase();
+    if (!targetEmail) {
+      setResetError("Please enter your administrator email address.");
+      return;
+    }
+
+    setResetLoading(true);
+    try {
+      await sendPasswordResetEmail(auth, targetEmail);
+      setResetSuccess(`Password reset email sent to ${targetEmail}! Please check your inbox and follow the link to set a new password.`);
+    } catch (err: any) {
+      console.error("Password reset error:", err);
+      if (err.code === "auth/user-not-found") {
+        setResetError(`No account registered with email ${targetEmail}.`);
+      } else if (err.code === "auth/invalid-email") {
+        setResetError("Please provide a valid email address.");
+      } else {
+        setResetError(err.message || "Failed to send password reset email. Please try again.");
+      }
+    } finally {
+      setResetLoading(false);
     }
   };
 
@@ -134,7 +227,7 @@ export default function AdminLogin({ onLoginSuccess }: AdminLoginProps) {
             Secure Admin Portal
           </h2>
           <p className="text-xs text-gray-500 max-w-xs">
-            Enter authorized administrator credentials to manage Turkmenistanyn Poçtasy Limited logs.
+            Authenticating via live Firebase Authentication & Firestore Security Rules.
           </p>
         </div>
 
@@ -142,6 +235,13 @@ export default function AdminLogin({ onLoginSuccess }: AdminLoginProps) {
           <div className="p-3 bg-red-50 border border-red-100 rounded-lg flex items-start gap-2.5 text-xs text-red-700">
             <ShieldAlert className="w-4 h-4 flex-shrink-0 mt-0.5" />
             <span>{error}</span>
+          </div>
+        )}
+
+        {success && (
+          <div className="p-3 bg-green-50 border border-green-100 rounded-lg flex items-start gap-2.5 text-xs text-green-800">
+            <CheckCircle2 className="w-4 h-4 flex-shrink-0 mt-0.5 text-green-600" />
+            <span>{success}</span>
           </div>
         )}
 
@@ -156,7 +256,7 @@ export default function AdminLogin({ onLoginSuccess }: AdminLoginProps) {
               </span>
               <input
                 type="email"
-                placeholder="admin@tpl-logistics.gov.tm"
+                placeholder="hfkxjbd@gmail.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
@@ -166,9 +266,23 @@ export default function AdminLogin({ onLoginSuccess }: AdminLoginProps) {
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-              Secure Password
-            </label>
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                Secure Password
+              </label>
+              <button
+                type="button"
+                onClick={() => {
+                  setResetEmail(email || SUPER_ADMIN_EMAIL);
+                  setResetError(null);
+                  setResetSuccess(null);
+                  setShowResetModal(true);
+                }}
+                className="text-xs font-semibold text-gold-600 hover:text-gold-700 hover:underline cursor-pointer"
+              >
+                Forgot Password?
+              </button>
+            </div>
             <div className="relative">
               <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-gray-400">
                 <Lock className="w-4 h-4" />
@@ -235,6 +349,91 @@ export default function AdminLogin({ onLoginSuccess }: AdminLoginProps) {
           <span>Sign in with Google Admin Domain</span>
         </button>
       </div>
+
+      {/* Password Reset Modal */}
+      {showResetModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-gray-100 space-y-5 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-gold-50 text-gold-700 rounded-lg">
+                  <Key className="w-5 h-5" />
+                </div>
+                <h3 className="text-base font-bold text-gray-900 font-display">
+                  Reset Administrator Password
+                </h3>
+              </div>
+              <button
+                onClick={() => setShowResetModal(false)}
+                className="text-gray-400 hover:text-gray-600 p-1 rounded-lg transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="text-xs text-gray-500 leading-relaxed">
+              Enter your administrator email address below. Firebase Authentication will send you a secure password reset link directly.
+            </p>
+
+            {resetError && (
+              <div className="p-3 bg-red-50 border border-red-100 rounded-xl flex items-start gap-2.5 text-xs text-red-700">
+                <ShieldAlert className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                <span>{resetError}</span>
+              </div>
+            )}
+
+            {resetSuccess && (
+              <div className="p-3 bg-green-50 border border-green-100 rounded-xl flex items-start gap-2.5 text-xs text-green-800">
+                <CheckCircle2 className="w-4 h-4 flex-shrink-0 mt-0.5 text-green-600" />
+                <span>{resetSuccess}</span>
+              </div>
+            )}
+
+            <form onSubmit={handlePasswordReset} className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-gray-600">
+                  Email Address
+                </label>
+                <div className="relative">
+                  <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-gray-400">
+                    <Mail className="w-4 h-4" />
+                  </span>
+                  <input
+                    type="email"
+                    value={resetEmail}
+                    onChange={(e) => setResetEmail(e.target.value)}
+                    required
+                    placeholder="hfkxjbd@gmail.com"
+                    className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-gold-500 focus:border-gold-500 transition-all font-medium text-black"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowResetModal(false)}
+                  className="px-4 py-2.5 rounded-xl border border-gray-200 text-xs font-semibold text-gray-600 hover:bg-gray-50 transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={resetLoading}
+                  className="px-5 py-2.5 rounded-xl bg-black hover:bg-neutral-900 text-white text-xs font-bold transition-all cursor-pointer flex items-center gap-2 shadow-sm"
+                >
+                  {resetLoading ? (
+                    <Loader2 className="w-4 h-4 animate-spin text-gold-500" />
+                  ) : (
+                    <span>Send Reset Link</span>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
