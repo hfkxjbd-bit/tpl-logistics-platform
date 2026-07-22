@@ -244,7 +244,11 @@ export default function AdminLogin({ onLoginSuccess }: AdminLoginProps) {
 
     setResetLoading(true);
     try {
-      await sendPasswordResetEmail(auth, targetEmail);
+      const actionCodeSettings = {
+        url: window.location.origin + "/?admin=true",
+        handleCodeInApp: false,
+      };
+      await sendPasswordResetEmail(auth, targetEmail, actionCodeSettings);
       setResetSuccess(`Password reset email sent to ${targetEmail}! Please check your inbox and follow the link to set a new password.`);
     } catch (err: any) {
       console.error("Password reset error:", err);
