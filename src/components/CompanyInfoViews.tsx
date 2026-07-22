@@ -25,7 +25,7 @@ interface InfoProps {
 const FAQS = [
   {
     q: "How can I track my shipment online?",
-    a: "Simply enter your unique tracking number (e.g., TPL-20260720-000001) in the 'Track Parcel' search bar on our homepage. It will output the complete timeline, current coordinates, and expected carriage delivery date in real-time.",
+    a: `Simply enter your unique tracking number (e.g., TPL-${new Date().getFullYear()}0720-000001) in the 'Track Parcel' search bar on our homepage. It will output the complete timeline, current coordinates, and expected carriage delivery date in real-time.`,
     category: "tracking"
   },
   {

@@ -72,8 +72,13 @@ service cloud.firestore {
     
     match /notifications/{notificationId} {
       allow read: if isAdmin();
-      allow create: if isAdmin() || (incoming().status == 'Sent' && incoming().trackingNumber is string);
-      allow update, delete: if isAdmin();
+      allow create: if isAdmin() || incoming().status == 'Pending' || (incoming().status == 'Sent' && incoming().trackingNumber is string);
+      allow update: if isAdmin() || (incoming().status in ['Sent', 'Failed']);
+      allow delete: if isAdmin();
+    }
+    
+    match /settings/{settingId} {
+      allow read, write: if isAdmin();
     }
     
     match /contacts/{contactId} {

@@ -202,7 +202,7 @@ export default function CustomerStaffManager({
           id: "em-1",
           recipientName: "Arslan Gurbanov",
           recipientEmail: "arslan.g@outlook.com",
-          subject: "Booking Approval Confirmation [TPL-20260720-000001]",
+          subject: `Booking Approval Confirmation [TPL-${new Date().getFullYear()}0720-000001]`,
           body: "Salom Arslan, your shipment booking has been approved. Please drop off the package at Ashgabat Central HQ.",
           sentAt: new Date(Date.now() - 3600000).toISOString(),
           status: "Opened"
@@ -1189,7 +1189,7 @@ export default function CustomerStaffManager({
                 <input 
                   type="text" 
                   required
-                  placeholder="e.g. Active Customs Hold Alert [TPL-2026]"
+                  placeholder={`e.g. Active Customs Hold Alert [TPL-${new Date().getFullYear()}]`}
                   value={directEmailSubject}
                   onChange={(e) => setDirectEmailSubject(e.target.value)}
                   className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-black font-semibold"

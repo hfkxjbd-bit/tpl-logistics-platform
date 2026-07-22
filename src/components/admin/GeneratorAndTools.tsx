@@ -54,7 +54,7 @@ export default function GeneratorAndTools({
       return;
     }
     const backupObj = {
-      version: "2026.1",
+      version: `${new Date().getFullYear()}.1`,
       exportedAt: new Date().toISOString(),
       shipments: shipments
     };
@@ -143,11 +143,13 @@ export default function GeneratorAndTools({
                 <select 
                   value={seqYear}
                   onChange={(e) => setSeqYear(e.target.value)}
-                  className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl"
+                  className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl cursor-pointer"
                 >
-                  <option value="2026">2026 (Operational)</option>
-                  <option value="2027">2027</option>
-                  <option value="2025">2025</option>
+                  {[new Date().getFullYear(), new Date().getFullYear() + 1, new Date().getFullYear() - 1, new Date().getFullYear() - 2].map((y) => (
+                    <option key={y} value={y.toString()}>
+                      {y} {y === new Date().getFullYear() ? "(Current)" : ""}
+                    </option>
+                  ))}
                 </select>
               </div>
               <div className="space-y-1">
@@ -155,10 +157,10 @@ export default function GeneratorAndTools({
                 <select 
                   value={seqMonth}
                   onChange={(e) => setSeqMonth(e.target.value)}
-                  className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl"
+                  className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl cursor-pointer"
                 >
                   {Array.from({ length: 12 }, (_, i) => (i + 1).toString().padStart(2, "0")).map(m => (
-                    <option key={m} value={m}>{m} ({new Date(2026, parseInt(m) - 1).toLocaleString('default', { month: 'short' })})</option>
+                    <option key={m} value={m}>{m} ({new Date(new Date().getFullYear(), parseInt(m) - 1).toLocaleString('default', { month: 'short' })})</option>
                   ))}
                 </select>
               </div>

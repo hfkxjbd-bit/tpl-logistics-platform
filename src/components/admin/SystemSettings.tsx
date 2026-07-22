@@ -282,6 +282,39 @@ export default function SystemSettings({
     }
   };
 
+  const [isTestingSmtp, setIsTestingSmtp] = useState(false);
+  const [smtpTestResult, setSmtpTestResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  const handleTestSmtpConnection = async () => {
+    setIsTestingSmtp(true);
+    setSmtpTestResult(null);
+    try {
+      const res = await fetch("/api/test-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" }
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setSmtpTestResult({
+          success: true,
+          message: data.message || "SMTP connection verified successfully!"
+        });
+      } else {
+        setSmtpTestResult({
+          success: false,
+          message: data.error || "SMTP test failed."
+        });
+      }
+    } catch (err: any) {
+      setSmtpTestResult({
+        success: false,
+        message: err.message || "Failed to reach server SMTP endpoint."
+      });
+    } finally {
+      setIsTestingSmtp(false);
+    }
+  };
+
   const handleSendCustomEmail = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!customRecipientEmail || !customRecipientName || !customSubject || !customBody) {
@@ -289,7 +322,6 @@ export default function SystemSettings({
       return;
     }
 
-    // Validate email address before sending (Requirement 8)
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(customRecipientEmail)) {
       setEmailSendError("Please enter a valid recipient email address.");
@@ -301,7 +333,44 @@ export default function SystemSettings({
     setEmailSendError(null);
 
     try {
-      // Enqueue document into the notifications collection in Firestore
+      // 1. First try direct API endpoint for immediate feedback
+      const res = await fetch("/api/send-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          recipientEmail: customRecipientEmail.trim(),
+          recipientName: customRecipientName.trim(),
+          subject: customSubject.trim(),
+          body: customBody.trim(),
+          trackingNumber: attachShipment ? selectedShipmentNo : "GENERAL",
+          sentBy: adminEmail
+        })
+      });
+
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        setEmailSendSuccess("Email dispatched and delivered successfully via SMTP!");
+        setIsSendingEmail(false);
+        setCustomRecipientName("");
+        setCustomRecipientEmail("");
+        setCustomSubject("");
+        setCustomBody("");
+        setAttachShipment(false);
+        setSearchQuery("");
+        return;
+      } else if (data.error) {
+        setEmailSendError(`SMTP delivery error: ${data.error}`);
+        setIsSendingEmail(false);
+        return;
+      }
+
+    } catch (apiErr) {
+      console.warn("API route failed, falling back to Firestore listener:", apiErr);
+    }
+
+    // 2. Fallback: Enqueue document into notifications collection in Firestore
+    try {
       const docRef = await addDoc(collection(db, "notifications"), {
         trackingNumber: attachShipment ? selectedShipmentNo : "GENERAL",
         recipientEmail: customRecipientEmail.trim(),
@@ -315,22 +384,18 @@ export default function SystemSettings({
         type: "manual"
       });
 
-      // Let's set up a real-time Firestore listener to monitor delivery status
       const unsub = onSnapshot(doc(db, "notifications", docRef.id), (docSnap) => {
         if (docSnap.exists()) {
           const updated = docSnap.data();
           if (updated.status === "Sent") {
             setEmailSendSuccess("Email dispatched and delivered successfully via SMTP!");
             setIsSendingEmail(false);
-            
-            // Reset form fields
             setCustomRecipientName("");
             setCustomRecipientEmail("");
             setCustomSubject("");
             setCustomBody("");
             setAttachShipment(false);
             setSearchQuery("");
-            
             unsub();
           } else if (updated.status === "Failed") {
             setEmailSendError(`SMTP dispatch failed: ${updated.error || "No response received from mail server"}`);
@@ -340,12 +405,11 @@ export default function SystemSettings({
         }
       });
 
-      // 15-second safety fallback timeout if functions trigger lags
       setTimeout(() => {
         unsub();
         if (isSendingEmail) {
           setIsSendingEmail(false);
-          setEmailSendSuccess("Email enqueued in outbox. Dispatch is processing in the background.");
+          setEmailSendError("Email send timed out. Please verify your SMTP credentials under Settings -> Email & SMS Settings.");
         }
       }, 15000);
 
@@ -624,10 +688,10 @@ export default function SystemSettings({
           </div>
 
           <div className="space-y-2.5 max-h-80 overflow-y-auto pr-1">
-            <p className="text-gray-500">[2026-07-20T19:30:10Z] SYSTEM_INITIALIZED -- listening on secure SSL channels...</p>
-            <p className="text-gray-500">[2026-07-20T19:30:22Z] SEED_DEMO -- manifested successfully in Cloud Firestore.</p>
-            <p className="text-gray-500">[2026-07-20T19:41:05Z] ADMIN_PORTAL -- secured credentials login logged for operator.</p>
-            <p className="text-gray-400">[2026-07-20T19:42:15Z] WEBSOCKETS_HMR -- dynamic assets hot-swaps online.</p>
+            <p className="text-gray-500">[{new Date(Date.now() - 3600000).toISOString()}] SYSTEM_INITIALIZED -- listening on secure SSL channels...</p>
+            <p className="text-gray-500">[{new Date(Date.now() - 2700000).toISOString()}] SEED_DEMO -- manifested successfully in Cloud Firestore.</p>
+            <p className="text-gray-500">[{new Date(Date.now() - 1800000).toISOString()}] ADMIN_PORTAL -- secured credentials login logged for operator.</p>
+            <p className="text-gray-400">[{new Date(Date.now() - 900000).toISOString()}] WEBSOCKETS_HMR -- dynamic assets hot-swaps online.</p>
             {systemLogs.length === 0 ? (
               <p className="text-gold-500 font-semibold">[IDLE] Awaiting operational updates...</p>
             ) : (
@@ -976,10 +1040,40 @@ export default function SystemSettings({
             </div>
           )}
 
+          {smtpTestResult && (
+            <div className={`p-3 rounded-xl border flex items-center gap-2 font-bold ${
+              smtpTestResult.success
+                ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                : "bg-red-50 border-red-200 text-red-800"
+            }`}>
+              {smtpTestResult.success ? (
+                <CheckCircle className="w-5 h-5 text-emerald-600 flex-shrink-0" />
+              ) : (
+                <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
+              )}
+              <span className="text-xs">{smtpTestResult.message}</span>
+            </div>
+          )}
+
           <div className="flex justify-between items-center pt-2">
-            <span className="text-[10px] text-gray-400 font-mono">
-              Last saved: {saveEmailSuccess ? "Just now" : "Database Synchronized"}
-            </span>
+            <button
+              type="button"
+              onClick={handleTestSmtpConnection}
+              disabled={isTestingSmtp}
+              className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-black border border-gray-300 rounded-xl font-bold transition-all cursor-pointer text-xs flex items-center gap-1.5 disabled:opacity-50"
+            >
+              {isTestingSmtp ? (
+                <>
+                  <Activity className="w-3.5 h-3.5 text-gold-600 animate-spin" />
+                  <span>Testing SMTP Connection...</span>
+                </>
+              ) : (
+                <>
+                  <Send className="w-3.5 h-3.5 text-gold-600" />
+                  <span>Test SMTP Server Connection</span>
+                </>
+              )}
+            </button>
             <button
               type="submit"
               className="px-6 py-2.5 bg-black text-gold-500 hover:bg-neutral-900 border border-neutral-800 rounded-xl font-extrabold transition-all cursor-pointer shadow-sm"
@@ -1082,7 +1176,7 @@ export default function SystemSettings({
               </thead>
               <tbody className="divide-y divide-gray-100 font-medium text-gray-700">
                 <tr className="hover:bg-neutral-50/50">
-                  <td className="py-2.5 px-4 font-mono text-gray-400">2026-07-20 20:30:10</td>
+                  <td className="py-2.5 px-4 font-mono text-gray-400">{new Date().toISOString().replace("T", " ").slice(0, 19)}</td>
                   <td className="py-2.5 px-4 font-semibold text-black">System Loader</td>
                   <td className="py-2.5 px-4">Platform container runtime boots up</td>
                   <td className="py-2.5 px-4 font-bold text-gray-400 uppercase">System</td>

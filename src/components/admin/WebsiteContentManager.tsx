@@ -486,7 +486,7 @@ export default function WebsiteContentManager({ activeTab }: WebsiteContentManag
 
             <div className="space-y-2 pt-2 border-t border-gray-100">
               <span className="text-[10px] font-mono tracking-widest text-gray-400 block font-bold uppercase">Universal Postal Union registration Code</span>
-              <p className="font-mono font-bold text-neutral-800 text-sm">UPU-TKM-2026</p>
+              <p className="font-mono font-bold text-neutral-800 text-sm">UPU-TKM-{new Date().getFullYear()}</p>
             </div>
 
             <div className="space-y-2 pt-2 border-t border-gray-100">

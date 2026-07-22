@@ -17,6 +17,19 @@
   --color-gold-800: #674c21;
   --color-gold-900: #513b1c;
   --color-gold-950: #2d200e;
+
+  /* Premium Deep Blue Logistics Theme */
+  --color-navy-50: #f0f4f8;
+  --color-navy-100: #d9e2ec;
+  --color-navy-200: #bccadc;
+  --color-navy-300: #9fb3c8;
+  --color-navy-400: #829ab1;
+  --color-navy-500: #627d98;
+  --color-navy-600: #486581;
+  --color-navy-700: #334e68;
+  --color-navy-800: #243b53;
+  --color-navy-900: #0f172a; /* Deep primary navy slate */
+  --color-navy-950: #0a0f1d;
 }
 
 /* Base style resets and transitions */

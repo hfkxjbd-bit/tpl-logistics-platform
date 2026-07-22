@@ -584,7 +584,7 @@ export default function App() {
 
         {/* Legal copyrights */}
         <div className="max-w-7xl mx-auto pt-6 flex flex-col sm:flex-row justify-between items-center gap-4 text-[10px] text-neutral-500 font-mono">
-          <span>© 2026 Turkmenistanyn Poçtasy Limited. All rights reserved. Registered UPU code: TM.</span>
+          <span>© {new Date().getFullYear()} Turkmenistanyn Poçtasy Limited. All rights reserved. Registered UPU code: TM.</span>
           <div className="flex gap-4">
             <button onClick={() => {
               window.history.pushState({}, "", "/");

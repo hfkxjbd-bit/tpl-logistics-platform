@@ -339,7 +339,7 @@ export default function PublicTracking() {
       if (docSnap.exists()) {
         setShipment(docSnap.data() as Shipment);
       } else {
-        setError("No parcel found with this tracking number. Please verify the code (e.g. TPL-20260720-000001) or contact support.");
+        setError(`No parcel found with this tracking number. Please verify the code (e.g. TPL-${new Date().getFullYear()}0720-000001) or contact support.`);
         setShipment(null);
       }
     }, (err) => {
@@ -484,7 +484,7 @@ export default function PublicTracking() {
         {/* Demo Quick Links */}
         <div className="flex flex-wrap items-center justify-center gap-2 pt-2 text-xs text-gray-500">
           <span>Popular Test Runs:</span>
-          {["TPL-20260720-000001", "TPL-20260720-000002"].map((demoId) => (
+          {[`TPL-${new Date().getFullYear()}0720-000001`, `TPL-${new Date().getFullYear()}0720-000002`].map((demoId) => (
             <button
               key={demoId}
               type="button"

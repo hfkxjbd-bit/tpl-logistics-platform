@@ -68,7 +68,7 @@ If you do not know the answer to a question or if it is outside our services, DO
 Be extremely warm, helpful, professional, and friendly. Speak naturally and concisely like a human customer support agent.
 
 4. TRACKING HELP:
-- If a user asks about tracking a package, explain how to track it (by entering their 19-character TPL tracking ID like TPL-20260720-000001).
+- If a user asks about tracking a package, explain how to track it (by entering their 19-character TPL tracking ID in the format TPL-YYYYMMDD-XXXXXX).
 - If system notes provide real-time tracking information about a specific shipment, summarize the status of their parcel clearly, including current location, sender, receiver, and estimated delivery, and reassure them of its secure transit.`;
 
 async function startServer() {
@@ -82,6 +82,105 @@ async function startServer() {
   // Health check route
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
+  });
+
+  // Start real-time email listener background worker
+  try {
+    const { startPendingNotificationListener } = await import("./src/lib/emailService.ts");
+    startPendingNotificationListener();
+    console.log("Live email delivery worker started successfully.");
+  } catch (workerErr) {
+    console.error("Failed to start email delivery worker:", workerErr);
+  }
+
+  // API Endpoint to send email directly and wait for result
+  app.post("/api/send-email", async (req, res) => {
+    try {
+      const { recipientEmail, recipientName, subject, body, trackingNumber, sentBy } = req.body;
+      if (!recipientEmail || !subject || !body) {
+        return res.status(400).json({ error: "Missing required fields: recipientEmail, subject, body" });
+      }
+
+      const { db } = await import("./src/lib/firebase.ts");
+      const { collection, addDoc } = await import("firebase/firestore");
+      const { sendEmailNotification } = await import("./src/lib/emailService.ts");
+
+      const notifDoc = {
+        trackingNumber: trackingNumber || "GENERAL",
+        recipientEmail: recipientEmail.trim(),
+        recipientName: recipientName ? recipientName.trim() : "Valued Customer",
+        recipientType: "Customer",
+        subject: subject.trim(),
+        body: body.trim(),
+        status: "Pending",
+        timestamp: new Date().toISOString(),
+        sentBy: sentBy || "Administrator",
+        type: "manual"
+      };
+
+      const docRef = await addDoc(collection(db, "notifications"), notifDoc);
+      console.log(`Created notification doc ${docRef.id} for immediate email dispatch.`);
+
+      const sendResult = await sendEmailNotification(docRef.id, notifDoc);
+
+      if (sendResult.success) {
+        return res.json({
+          success: true,
+          message: "Email dispatched and delivered successfully via SMTP!",
+          notificationId: docRef.id
+        });
+      } else {
+        return res.status(500).json({
+          success: false,
+          error: sendResult.error || "Failed to deliver email via SMTP",
+          notificationId: docRef.id
+        });
+      }
+    } catch (err: any) {
+      console.error("API /api/send-email error:", err);
+      return res.status(500).json({ error: err.message || "Failed to process email request" });
+    }
+  });
+
+  // API Endpoint to test SMTP configuration
+  app.post("/api/test-email", async (req, res) => {
+    try {
+      const { getSmtpConfig } = await import("./src/lib/emailService.ts");
+      const config = await getSmtpConfig();
+
+      if (!config) {
+        return res.status(400).json({
+          success: false,
+          error: "No SMTP credentials found in Firestore settings/email_config or environment variables."
+        });
+      }
+
+      const nodemailer = (await import("nodemailer")).default;
+      const transporter = nodemailer.createTransport({
+        host: config.smtpHost,
+        port: config.smtpPort,
+        secure: config.smtpPort === 465,
+        auth: {
+          user: config.smtpUser,
+          pass: config.smtpPass
+        },
+        tls: {
+          rejectUnauthorized: false
+        }
+      });
+
+      await transporter.verify();
+      return res.json({
+        success: true,
+        message: `SMTP connection verified successfully to ${config.smtpHost}:${config.smtpPort} using account ${config.smtpUser}!`
+      });
+    } catch (err: any) {
+      console.error("SMTP verification error:", err);
+      return res.status(500).json({
+        success: false,
+        error: `SMTP connection failed: ${err.message || "Could not reach or authenticate with SMTP server"}`
+      });
+    }
   });
 
   // Server-side Live Chat Assistant Endpoint

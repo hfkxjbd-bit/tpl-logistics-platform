@@ -107,7 +107,7 @@ export default function HomeView({ onNavigate, onInstantTrack }: HomeViewProps) 
                 </div>
                 <input
                   type="text"
-                  placeholder="Enter Tracking Number (e.g. TPL-2026...)"
+                  placeholder={`Enter Tracking Number (e.g. TPL-${new Date().getFullYear()}...)`}
                   value={quickTrackInput}
                   onChange={(e) => setQuickTrackInput(e.target.value)}
                   className="flex-1 bg-transparent border-none text-white text-xs py-2 px-1 focus:outline-none placeholder-neutral-500 font-mono font-bold"
@@ -120,7 +120,7 @@ export default function HomeView({ onNavigate, onInstantTrack }: HomeViewProps) 
                 </button>
               </div>
               <span className="text-[10px] text-neutral-500 font-mono mt-2 block">
-                Format: TPL-YYYYMMDD-XXXXXX • Live 2026 tracing active
+                Format: TPL-YYYYMMDD-XXXXXX • Live {new Date().getFullYear()} tracing active
               </span>
             </form>
 
@@ -181,11 +181,11 @@ export default function HomeView({ onNavigate, onInstantTrack }: HomeViewProps) 
               <div className="space-y-1.5 font-mono text-[9px] text-neutral-500">
                 <p className="flex items-center gap-1.5">
                   <span className="text-green-500">▶</span>
-                  <span>[07-20 12:35] TPL-20260718-000003 Cleared Customs • Ashgabat Air Cargo Hub</span>
+                  <span>[{new Date().toISOString().slice(5, 10)} 12:35] TPL-{new Date().getFullYear()}{(new Date().getMonth()+1).toString().padStart(2,"0")}18-000003 Cleared Customs • Ashgabat Air Cargo Hub</span>
                 </p>
                 <p className="flex items-center gap-1.5">
                   <span className="text-green-500">▶</span>
-                  <span>[07-20 12:21] TPL-20260719-000001 Dispatched for Transit • Mary District</span>
+                  <span>[{new Date().toISOString().slice(5, 10)} 12:21] TPL-{new Date().getFullYear()}{(new Date().getMonth()+1).toString().padStart(2,"0")}19-000001 Dispatched for Transit • Mary District</span>
                 </p>
               </div>
             </div>
