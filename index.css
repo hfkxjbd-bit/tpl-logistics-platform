@@ -1,0 +1,47 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Outfit", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  
+  --color-gold-50: #fbf8eb;
+  --color-gold-100: #f5edcb;
+  --color-gold-200: #eadb97;
+  --color-gold-300: #dec15b;
+  --color-gold-400: #d4aa2e;
+  --color-gold-500: #c5a043; /* Rich gold */
+  --color-gold-600: #a98332;
+  --color-gold-700: #866327;
+  --color-gold-800: #674c21;
+  --color-gold-900: #513b1c;
+  --color-gold-950: #2d200e;
+
+  /* Premium Deep Blue Logistics Theme */
+  --color-navy-50: #f0f4f8;
+  --color-navy-100: #d9e2ec;
+  --color-navy-200: #bccadc;
+  --color-navy-300: #9fb3c8;
+  --color-navy-400: #829ab1;
+  --color-navy-500: #627d98;
+  --color-navy-600: #486581;
+  --color-navy-700: #334e68;
+  --color-navy-800: #243b53;
+  --color-navy-900: #0f172a; /* Deep primary navy slate */
+  --color-navy-950: #0a0f1d;
+}
+
+/* Base style resets and transitions */
+body {
+  font-family: var(--font-sans);
+  background-color: #fafafa;
+  color: #111111;
+  overflow-x: hidden;
+}
+
+/* High contrast premium aesthetic selections */
+::selection {
+  background-color: var(--color-gold-500);
+  color: #000000;
+}
